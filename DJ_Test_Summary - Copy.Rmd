@@ -1,0 +1,207 @@
+---
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE, echo=FALSE}
+knitr::opts_chunk$set(echo = FALSE,
+                      message = FALSE, # turns off messages returned by functions like summarize()
+                      warning = FALSE) # 
+
+library(readxl)
+library(dplyr)
+library(ggplot2)
+library(qwraps2)
+library(anytime)
+library(ggthemes)
+
+# MAKE SURE TO INCLUDE THIS IF KNITTING TO HTML
+# 
+options(qwraps2_markup = "markdown")
+
+#Convert XLSX
+# NULL/NA for spin_rates
+pitcher_data = 
+  read_xlsx("SAMPLE_DATA.xlsx") %>% 
+  rename_with(.fn = tolower) %>% 
+  mutate(date = anydate(date),
+         spin_rate = as.numeric(spin_rate)) %>% 
+  filter(!is.na(spin_rate))
+```
+
+```{r summary_definition}
+
+overall_summary = 
+  qsummary(pitcher_data[, c("spin_rate", "velo", "release_extension", "release_side", "release_height")],
+           numeric_summaries = list(
+             "Min" = "~min(%s)",
+             "Max" = "~max(%s)",
+             "Mean (SD)" = "~mean_sd(%s)",
+             "Median (IQR)" = "~median_iqr(%s)"
+           ))
+```
+
+```{r grouped_table_output, results='asis'}
+
+summary_table(group_by(pitcher_data, pitcher), overall_summary)
+```
+
+```{r histogram}
+
+ggplot(pitcher_data,
+       aes(x = velo,
+           fill = pitch_type)) +
+  geom_histogram(binwidth = 1,
+                 boundary = 0) +
+  facet_grid(pitcher ~ pitch_type) +
+  labs(x = "Velo",
+       y = "Pitch Count") +
+  theme_few() +
+  theme(legend.position = "none")
+```
+
+```{r density}
+ggplot(pitcher_data,
+       aes(x = velo,
+           fill = pitch_type)) +
+  geom_density(alpha = 0.2) +
+  facet_grid(pitcher ~ pitch_type) +
+  labs(x = "Velo (mph)", y = "Density") + 
+  theme_few() +
+  theme(legend.position = "none")
+```
+
+```{r}
+
+ggplot(pitcher_data,
+       aes(x = date,
+           y = velo,
+           color = pitch_type)) +
+  geom_point(alpha = 0.1) +
+  facet_wrap(~pitcher) +
+  labs(x = "Date",
+       y = "Velo (mph)") +
+  scale_color_discrete("Pitch Type") +
+  theme_few() +
+  theme(legend.position = "bottom")
+```
+
+```{r alt_table}
+library(tidyr)
+library(knitr)
+library(kableExtra)
+
+
+options(knitr.kable.NA = '')
+
+
+pitcher_data %>% 
+ 
+  pivot_longer(spin_rate:release_height) %>% 
+  group_by(pitcher, pitch_type, name) %>% 
+  summarize(value = mean(value)) %>% 
+  pivot_wider(names_from = pitcher, values_from = value) %>%
+ 
+  arrange(name, pitch_type) %>% 
+ 
+  select(-name) %>% 
+ 
+  kable(digits = 1, col.names = c("", "Pitcher A", "Pitcher B")) %>% 
+ 
+  kable_styling() %>% 
+ 
+  pack_rows(index = c("Release Extension" = 5, "Release Height" = 5, "Release Side" = 5, "Spin Rate" = 5, "Velo" = 5),
+            label_row_css = "background: #C6011F; color: white;")
+```
+
+```{r alt_table_2}
+options(knitr.kable.NA = '')
+
+
+pitcher_data %>% 
+  pivot_longer(spin_rate:release_height) %>% 
+  group_by(pitcher, pitch_type, name) %>% 
+  summarize(mean = mean(value),
+           
+            mean_sd = sprintf("%.1f ± %.1f", 
+                              mean(value), 
+                              sd(value)),
+            median = median(value),
+            median_iqr = sprintf("%.1f (%.1f, %.1f)", 
+                                 median(value), 
+                                 quantile(value, 0.25), 
+                                 quantile(value, 0.75))) %>% 
+ 
+  pivot_wider(names_from = pitcher, values_from = mean:median_iqr) %>% 
+
+  relocate(matches("PITCHER A"),
+           .before = `mean_PITCHER B`) %>% 
+  arrange(name, pitch_type) %>% 
+ 
+  select(-c(name, matches("mean_PITCHER|median_PITCHER"))) %>% 
+  kable(col.names = c("", rep(c("Mean ± SD", "Median (IQR)"), 2)),
+        align = "lrrrr") %>% 
+  kable_styling() %>% 
+ 
+  add_header_above(c(" " = 1, "Pitcher A" = 2, "Pitcher B" = 2)) %>% 
+  pack_rows(index = c("Release Extension" = 5, "Release Height" = 5, "Release Side" = 5, "Spin Rate" = 5, "Velo" = 5),
+            label_row_css = "background: #C6011F; color: white;")
+```
+
+```{r alt_table_3}
+options(knitr.kable.NA = '')
+
+pitcher_data %>% 
+  pivot_longer(spin_rate:release_height) %>% 
+  group_by(pitcher, pitch_type, name) %>% 
+  summarize(mean = mean(value),
+            mean_sd = sprintf("%.1f ± %.1f", 
+                              mean(value), 
+                              sd(value)),
+            median = median(value),
+            median_iqr = sprintf("%.1f (%.1f, %.1f)", 
+                                 median(value), 
+                                 quantile(value, 0.25), 
+                                 quantile(value, 0.75))) %>% 
+  pivot_wider(names_from = pitcher, values_from = mean:median_iqr) %>% 
+  relocate(matches("PITCHER A"),
+           .before = `mean_PITCHER B`) %>% 
+  arrange(name, pitch_type) %>% 
+ 
+  select(matches("mean_sd"), matches("median_iqr")) %>% 
+  kable(col.names = c("", rep(c("Pitcher A", "Pitcher B"), 2)),
+        align = "lrrrr") %>% 
+  kable_styling() %>% 
+  add_header_above(c(" " = 1, "Mean ± SD" = 2, "Median (IQR)" = 2)) %>% 
+  pack_rows(index = c("Release Extension" = 5, "Release Height" = 5, "Release Side" = 5, "Spin Rate" = 5, "Velo" = 5),
+            label_row_css = "background: #C6011F; color: white;")
+```
+
+```{r inning_plot}
+# ggplot(pitcher_data,
+#        aes(x = inning,
+#            y = velo,
+#            color = pitch_type)) +
+#   geom_point() +
+#   facet_wrap(date ~ pitcher)
+
+# ggplot(pitcher_data,
+#        aes(x = inning,
+#            y = velo,
+#            color = pitch_type,
+#            group = date)) +
+#   geom_point() +
+#   facet_wrap(~pitcher)
+
+
+
+ ggplot(pitcher_data,
+        aes(x = inning,
+            y = velo,
+            color = pitch_type,
+            group = date)) +
+   geom_point() +
+   facet_wrap(~pitcher)
+```
+
